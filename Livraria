@@ -1,0 +1,171 @@
+from flask import Flask, request, jsonify
+from flask_sqlalchemy import SQLAlchemy
+
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///books.db'
+db = SQLAlchemy(app)
+
+# Book Class
+class Book(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    genre = db.Column(db.String(50), nullable=False)
+    year = db.Column(db.Integer, nullable=False)
+
+# User Class
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+
+# Reservation Class
+class Reservation(db.Model):
+    reservation_id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+    reserved_book = db.Column(db.Integer, db.ForeignKey('book.id'))
+
+with app.app_context():
+    db.create_all()
+
+# Routes for Listing Books and Users
+@app.route('/ListBooks', methods=['GET'])
+def list_books():
+    books = Book.query.all()
+    books_list = []
+    for book in books:
+        books_list.append({
+            'id': book.id,
+            'name': book.name,
+            'genre': book.genre,
+            'year': book.year
+        })
+    return jsonify({'Books': books_list})
+
+@app.route('/ListUsers', methods=['GET'])
+def list_users():
+    users = User.query.all()
+    user_list = []
+    for user in users:
+        user_list.append({
+            'id': user.id,
+            'name': user.name,
+        })
+    return jsonify({'Users': user_list})
+
+# Route for Reserved Books
+@app.route('/Reserve', methods=['POST'])
+def reserve():
+    data = request.json
+    user = User.query.get(data['user_id'])
+    book = Book.query.get(data['book_id'])
+    if not user or not book:
+        return jsonify({"error": "User or book not found"}), 404
+    reservation = Reservation(user_id=data['user_id'], reserved_book=data['book_id'])
+    db.session.add(reservation)
+    db.session.commit()
+    return jsonify({"message": "Reservation made successfully"}), 201
+
+@app.route('/ListReservations', methods=['GET'])
+def list_reservations():
+    reservations = Reservation.query.all()
+    reservations_list = []
+    for reservation in reservations:
+        user = User.query.get(reservation.user_id)
+        book = Book.query.get(reservation.reserved_book)
+        reservations_list.append({
+            'reservation_id': reservation.reservation_id,
+            'user': {
+                'id': user.id,
+                'name': user.name
+            },
+            'book': {
+                'id': book.id,
+                'name': book.name,
+                'genre': book.genre,
+                'year': book.year
+            }
+        })
+    return jsonify({'reservations': reservations_list})
+
+# Routes for Adding Books and Users
+@app.route('/AddBook', methods=['POST'])
+def add_book():
+    data = request.json
+    new_book = Book(
+        name=data['name'],
+        genre=data['genre'],
+        year=data['year']
+    )
+    db.session.add(new_book)
+    db.session.commit()
+    return jsonify({'book_added': {
+        'id': new_book.id,
+        'name': new_book.name,
+        'genre': new_book.genre,
+        'year': new_book.year
+    }}), 201
+
+@app.route('/AddUser', methods=['POST'])
+def add_user():
+    data = request.json
+    new_user = User(
+        name=data['name']
+    )
+    db.session.add(new_user)
+    db.session.commit()
+    return jsonify({'user_added': {
+        'id': new_user.id,
+        'name': new_user.name
+    }}), 201
+
+# Routes for Deleting Books and Users
+@app.route('/DeleteBook/<int:id>', methods=['DELETE'])
+def delete_book(id):
+    book = Book.query.get(id)
+    if book is None:
+        return jsonify({"error": "Book not found"}), 404
+    db.session.delete(book)
+    db.session.commit()
+    return jsonify({"message": "Book deleted successfully"}), 200
+
+@app.route('/DeleteUser/<int:id>', methods=['DELETE'])
+def delete_user(id):
+    user = User.query.get(id)
+    if user is None:
+        return jsonify({"error": "User not found"}), 404
+    db.session.delete(user)
+    db.session.commit()
+    return jsonify({"message": "User deleted successfully"}), 200
+
+# Routes for Updating Books and Users
+@app.route('/UpdateBook/<int:id>', methods=['PUT'])
+def update_book(id):
+    book = Book.query.get(id)
+    if not book:
+        return jsonify({"error": "Book not found"}), 404
+    data = request.json
+    book.name = data.get('name', book.name)
+    book.genre = data.get('genre', book.genre)
+    book.year = data.get('year', book.year)
+    db.session.commit()
+    return jsonify({
+        'id': book.id,
+        'name': book.name,
+        'genre': book.genre,
+        'year': book.year
+    }), 200
+
+@app.route('/UpdateUser/<int:id>', methods=['PUT'])
+def update_user(id):
+    user = User.query.get(id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+    data = request.json
+    user.name = data.get('name', user.name)
+    db.session.commit()
+    return jsonify({
+        'id': user.id,
+        'name': user.name
+    }), 200
+
+if __name__ == '__main__':
+    app.run(debug=True)
